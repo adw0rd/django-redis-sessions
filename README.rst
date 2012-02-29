@@ -19,6 +19,7 @@ Installation
        SESSION_REDIS_PORT = 6379
        SESSION_REDIS_DB = 0
        SESSION_REDIS_PASSWORD = 'password'
+       SESSION_REDIS_PREFIX = 'session'
 		
 4. That's it
 	   
