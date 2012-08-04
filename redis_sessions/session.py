@@ -10,13 +10,26 @@ class SessionStore(SessionBase):
     """
     def __init__(self, session_key=None):
         super(SessionStore, self).__init__(session_key)
-        self.server = redis.StrictRedis(
-            host=getattr(settings, 'SESSION_REDIS_HOST', 'localhost'),
-            port=getattr(settings, 'SESSION_REDIS_PORT', 6379),
-            db=getattr(settings, 'SESSION_REDIS_DB', 0),
-            password=getattr(settings, 'SESSION_REDIS_PASSWORD', None)
-        )
-
+        
+        try:
+            unix_socket_path=getattr(settings, 'SESSION_REDIS_UNIX_DOMAIN_SOCKET_PATH', None)
+        except AttributeError:
+            unix_socket_path = None
+        
+        if unix_socket_path is None:
+            self.server = redis.StrictRedis(
+                host=getattr(settings, 'SESSION_REDIS_HOST', 'localhost'),
+                port=getattr(settings, 'SESSION_REDIS_PORT', 6379),
+                db=getattr(settings, 'SESSION_REDIS_DB', 0),
+                password=getattr(settings, 'SESSION_REDIS_PASSWORD', None),
+            )
+        else:
+            self.server = redis.StrictRedis(
+                unix_socket_path=getattr(settings, 'SESSION_REDIS_UNIX_DOMAIN_SOCKET_PATH', '/var/run/redis/redis.sock'),
+                db=getattr(settings, 'SESSION_REDIS_DB', 0),
+                password=getattr(settings, 'SESSION_REDIS_PASSWORD', None),
+            )
+        
     def load(self):
         try:
             session_data = self.server.get(self.get_real_stored_key(self._get_or_create_session_key()))
@@ -43,8 +56,11 @@ class SessionStore(SessionBase):
         if must_create and self.exists(self._get_or_create_session_key()):
             raise CreateError
         data = self.encode(self._get_session(no_load=must_create))
-        self.server.set(self.get_real_stored_key(self._get_or_create_session_key()), data)
-        self.server.expire(self.get_real_stored_key(self._get_or_create_session_key()), self.get_expiry_age())
+        if redis.VERSION[0] >= 2:
+            self.server.setex(self.get_real_stored_key(self._get_or_create_session_key()), self.get_expiry_age(), data)
+        else:
+            self.server.set(self.get_real_stored_key(self._get_or_create_session_key()), data)
+            self.server.expire(self.get_real_stored_key(self._get_or_create_session_key()), self.get_expiry_age())
 
     def delete(self, session_key=None):
         if session_key is None:
